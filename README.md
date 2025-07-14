@@ -1,6 +1,15 @@
 [中文阅读](README_zh_cn.md)
 [日本語で読む](README_ja_jp.md)
 
+conda activate Hunyuan3D-2GP
+python3 gradio_app.py --model_path tencent/Hunyuan3D-2mv --subfolder hunyuan3d-dit-v2-mv-turbo --enable_flashvdm
+python test.py 
+python mv-turbo-flash.py --input front.jpg back.jpg left.jpg --output output.glb
+
+
+python api_server.py --host 0.0.0.0 --port 8080
+python apitest.py 
+
 <p align="center"> 
   <img src="https://github.com/user-attachments/assets/efb402a1-0b09-41e0-a6cb-259d442e76aa">
 
