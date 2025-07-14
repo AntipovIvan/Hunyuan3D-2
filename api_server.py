@@ -39,7 +39,6 @@ moderation_msg = "YOUR INPUT VIOLATES OUR CONTENT MODERATION GUIDELINES. PLEASE 
 
 handler = None
 
-# ... (All the logger functions remain the same) ...
 def build_logger(logger_name, logger_filename):
     global handler
 
@@ -230,7 +229,12 @@ class ModelWorker:
             shutil.move(temp_file.name, save_path)
 
         torch.cuda.empty_cache()
-        return save_path, uid
+        
+        # Calculate origin
+        origin = mesh.bounds.mean(axis=0).tolist()
+
+        # Return path and origin
+        return save_path, uid, origin
 
 # ... (rest of the FastAPI app setup remains the same) ...
 app = FastAPI()
@@ -253,9 +257,21 @@ async def generate(request: Request):
     
     uid = uuid.uuid4()
     try:
-        file_path, uid = worker.generate(uid, params)
-        # Return the generated file directly
-        return FileResponse(file_path, media_type='application/octet-stream', filename=os.path.basename(file_path))
+        file_path, uid, origin = worker.generate(uid, params)
+        
+        # Encode file in base64
+        with open(file_path, "rb") as f:
+            encoded_mesh = base64.b64encode(f.read()).decode('utf-8')
+        
+        # Clean up the temporary file
+        os.remove(file_path)
+
+        # Return the generated file and origin as JSON
+        return JSONResponse({
+            "mesh_base64": encoded_mesh,
+            "origin": origin,
+            "filename": os.path.basename(file_path)
+        })
     except ValueError as e:
         traceback.print_exc()
         print("Caught ValueError:", e)

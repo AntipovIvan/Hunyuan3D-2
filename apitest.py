@@ -46,13 +46,13 @@ payload = {
     "seed": 1234,
     "octree_resolution": 128,  # Higher value might improve quality but increase time
     "num_inference_steps": 5,  # Fewer steps for faster inference
-    "guidance_scale": 30.0,
+    "guidance_scale": 5.0,
     "type": "obj",             # We want an .obj file as output
 }
 
 headers = {
     "Content-Type": "application/json",
-    "Accept": "application/octet-stream" # We expect a file back
+    "Accept": "application/json"  # We expect a JSON response back
 }
 
 # --- Benchmarking ---
@@ -71,11 +71,22 @@ try:
 
     print(f"Successfully received response in {processing_time:.4f} seconds.")
 
+    # --- Process the Response ---
+    response_data = response.json()
+    
+    # Decode the mesh from base64
+    mesh_data = base64.b64decode(response_data["mesh_base64"])
+    
     # Save the resulting .obj file
-    output_filename = "local_api_output.obj"
+    output_filename = response_data.get("filename", "local_api_output.obj")
     with open(output_filename, "wb") as f:
-        f.write(response.content)
+        f.write(mesh_data)
     print(f"Saved generated mesh to '{output_filename}'")
+
+    # Print the origin
+    origin = response_data.get("origin")
+    if origin:
+        print(f"Calculated mesh origin: {origin}")
 
 except requests.exceptions.RequestException as e:
     print(f"An error occurred during the request: {e}")
