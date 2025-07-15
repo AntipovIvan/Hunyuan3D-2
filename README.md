@@ -8,3 +8,4 @@ python mv-turbo-flash.py --input front.jpg back.jpg left.jpg --output output.glb
 
 python api_server.py --host 0.0.0.0 --port 8080<br/>
 python apitest.py <br/>
+python apitest.py --with-texture

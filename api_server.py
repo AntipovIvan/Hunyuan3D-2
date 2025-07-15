@@ -10,6 +10,7 @@ import base64
 import logging
 import logging.handlers
 import os
+# os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 import sys
 import tempfile
 import threading
@@ -20,6 +21,7 @@ from io import BytesIO
 
 import torch
 import trimesh
+import numpy as np
 import uvicorn
 from PIL import Image
 from fastapi import FastAPI, Request
@@ -182,9 +184,12 @@ class ModelWorker:
                     img_rembg = self.rembg(img_pil)
                     processed_images[key] = img_rembg
             if 'front_image' in processed_images:
-                params['image'] = processed_images['front_image']
+                image = processed_images['front_image']
+                params['image'] = image
             elif processed_images:
-                params['image'] = next(iter(processed_images.values()))
+                image = next(iter(processed_images.values()))
+                params['image'] = image
+
             else:
                  raise ValueError("Multi-view generation requested but no valid images found.")
             params.update(processed_images)
@@ -218,7 +223,51 @@ class ModelWorker:
         mesh = DegenerateFaceRemover()(mesh)
         mesh = FaceReducer()(mesh, max_facenum=params.get('face_count', 10000))
         if params.get('texture', False):
-            mesh = self.pipeline_tex(mesh, image)
+            # The original texturing pipeline is too memory intensive.
+            # Replace with a simple projective texturing from the front view.
+            try:
+                # The 'image' variable holds the background-removed PIL image.
+                # In multi-view cases, it's set to the front image.
+                texture_image = image
+
+                # 1. Create a material for the texture
+                material = trimesh.visual.texture.SimpleMaterial(image=texture_image)
+
+                # 2. Calculate UV coordinates using planar projection (front view)
+                # We assume the front of the object is facing along an axis (e.g., -Z)
+                # and we can project the texture from the front.
+                vertices = mesh.vertices
+
+                # Get the bounding box of the mesh
+                min_bound = vertices.min(axis=0)
+                max_bound = vertices.max(axis=0)
+                span = max_bound - min_bound
+
+                # To preserve aspect ratio, scale by the largest dimension
+                max_dim = max(span[0], span[1])
+                if max_dim == 0:
+                    max_dim = 1.0
+
+                # Center the UV coordinates
+                center = (min_bound[:2] + max_bound[:2]) / 2.0
+                uv = (vertices[:, :2] - center) / max_dim
+
+                # Shift from [-0.5, 0.5] to [0, 1]
+                uv += 0.5
+
+                # The Y-axis in UV coordinates (v) often needs to be flipped.
+                # After testing, it seems this is not necessary for this model.
+                # uv[:, 1] = 1 - uv[:, 1]
+
+                # 3. Create texture visuals
+                visuals = trimesh.visual.TextureVisuals(uv=uv, material=material)
+
+                # 4. Assign the visuals to the mesh
+                mesh.visual = visuals
+                logger.info("Applied texture using simple projective mapping.")
+            except Exception as e:
+                logger.error(f"Failed to apply texture: {e}")
+                traceback.print_exc()
 
         type = params.get('type', 'obj')
         with tempfile.NamedTemporaryFile(suffix=f'.{type}', delete=False) as temp_file:

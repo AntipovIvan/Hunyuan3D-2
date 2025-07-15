@@ -2,6 +2,7 @@ import requests
 import time
 import base64
 import os
+import argparse
 
 # --- Configuration ---
 # URL for your locally running FastAPI server
@@ -46,9 +47,21 @@ payload = {
     "seed": 1234,
     "octree_resolution": 128,  # Higher value might improve quality but increase time
     "num_inference_steps": 5,  # Fewer steps for faster inference
-    "guidance_scale": 5.0,
-    "type": "obj",             # We want an .obj file as output
+    "guidance_scale": 10.0,
+    "type": "obj",             # Default to .obj for textureless mesh
 }
+
+# --- Argument Parsing ---
+parser = argparse.ArgumentParser(description="Test script for Hunyuan3D API.")
+parser.add_argument('--with-texture', action='store_true', help="Generate a mesh with textures.")
+args = parser.parse_args()
+
+if args.with_texture:
+    print("Texture generation enabled.")
+    payload['texture'] = True
+    payload['type'] = 'glb'  # Textured meshes are best saved as .glb
+else:
+    print("Generating textureless mesh.")
 
 headers = {
     "Content-Type": "application/json",
