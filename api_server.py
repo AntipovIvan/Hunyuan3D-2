@@ -31,6 +31,7 @@ from hy3dgen.shapegen import MeshSimplifier
 from hy3dgen.rembg import BackgroundRemover
 from hy3dgen.shapegen import Hunyuan3DDiTFlowMatchingPipeline, FloaterRemover, DegenerateFaceRemover, FaceReducer, \
     MeshSimplifier
+from hy3dgen.shapegen.models.autoencoders import SurfaceExtractors
 from hy3dgen.texgen import Hunyuan3DPaintPipeline
 from hy3dgen.text2image import HunyuanDiTPipeline
 
@@ -213,7 +214,8 @@ class ModelWorker:
             generation_params['octree_resolution'] = params.get("octree_resolution", 128)
             generation_params['num_inference_steps'] = params.get("num_inference_steps", 5)
             generation_params['guidance_scale'] = params.get('guidance_scale', 5.0)
-            generation_params['mc_algo'] = 'mc'
+            # Address deprecation of mc_algo by setting the surface extractor directly
+            self.pipeline.vae.surface_extractor = SurfaceExtractors['mc']()
             import time
             start_time = time.time()
             mesh = self.pipeline(**generation_params)[0]
@@ -270,12 +272,22 @@ class ModelWorker:
                 traceback.print_exc()
 
         type = params.get('type', 'obj')
-        with tempfile.NamedTemporaryFile(suffix=f'.{type}', delete=False) as temp_file:
-            mesh.export(temp_file.name)
+        # Create a temporary file but close it immediately so its handle is released.
+        # This prevents PermissionError on Windows.
+        temp_f = tempfile.NamedTemporaryFile(suffix=f'.{type}', delete=False)
+        temp_file_path = temp_f.name
+        temp_f.close()
+
+        try:
+            mesh.export(temp_file_path)
             save_path = os.path.join(SAVE_DIR, f'{str(uid)}.{type}')
             
             # Use shutil.move to handle moving files across different filesystems
-            shutil.move(temp_file.name, save_path)
+            shutil.move(temp_file_path, save_path)
+        finally:
+            # If the move fails, the temp file might still exist. Clean it up.
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
 
         torch.cuda.empty_cache()
         
